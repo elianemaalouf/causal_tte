@@ -1,0 +1,387 @@
+---
+title: "Does higher coffee intake improve cognitive function in older adults? A target trial emulation study"
+author: "Eliane Maalouf"
+date: "24/02/2026"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+knit: (function(input, ...) { rmarkdown::render(input, ...) })
+---
+```{r setup, include=FALSE}
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+library(ggdag)
+library(visNetwork)
+library(dplyr)
+library(ggplot2)
+library(tableone)
+library(kableExtra)
+library(forcats)
+library(broom)
+library(sjPlot)
+library(knitr)
+
+tidy_logistic_model <- function(logistic_model){
+  tidy_model <- tidy(logistic_model, 
+        exponentiate = TRUE, 
+        conf.int = TRUE) %>%
+  select(
+    `Predictor` = term, 
+    `Odds Ratio` = estimate, 
+    `95% CI Lower` = conf.low, 
+    `95% CI Upper` = conf.high, 
+    `P-value` = p.value
+  )
+
+  tidy_model %>%
+    kable(escape = FALSE, digits = 3, caption = "P(Coffee > 480 g/day | covariates) - Odds Ratios") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+    row_spec(0, bold = TRUE) # Bold the header row
+}
+
+set.seed(42)
+
+data_dir <- here::here("data") 
+dataset_file <- paste0(data_dir, "/dataset.rda")
+load(dataset_file)
+```
+
+# Context
+"The NHANES study revealed significant findings regarding coffee consumption and cognitive performance. Compared to non-coffee consumers, individuals consuming ≥ 480 g/day of coffee had a significantly lower odds of low CERAD scores, with an adjusted OR of 0.58 (95% CI: 0.41–0.82) in the fully adjusted Model 4." [Li et al., 2025](https://link.springer.com/article/10.1186/s12937-025-01173-x)
+
+* NHANES study: National Health and Nutrition Examination Survey, biennial cross-sectional study organized by the Centers for Disease Control and Prevention (CDC), evaluates the health and nutritional status of individuals in the United States. [Data is open access](https://wwwn.cdc.gov/nchs/nhanes/default.aspx). 
+
+* CERAD: Consortium to Establish a Registry for Alzheimer’s Disease (CERAD) Word Learning sub-test. Test consists of three learning trials followed by a delayed recall component, designed to assess participants’ immediate and delayed verbal information recall abilities. Each learning trial scores range from 0 to 10, and the overall CERAD score is calculated by summing the scores from all trials and the delayed recall, reflecting the participants’ mastery of verbal information. 
+
+
+**Goal of this work** : assess whether a Target Trial Emulation (TTE) framework would lead to a comparable conclusion. 
+
+# Target Trial protocol 
+* **Objective**: investigate the causal effect of coffee consumption on improved cognitive functioning in older adults (as measured by the CERAD score)
+* **Hypothesis**: higher coffee intake leads to higher CERAD scores 
+* **Population**: Included are participants aged 60 years or older. Excluded are participants with incomplete coginitive tests or incomplete dietary recall data. 
+* **Exposure**: consuming ≥ 480 g/day of coffee 
+* **Comparator**: consuming < 480 g/day of coffee 
+* **Outcome**: CERAD score > cutoff[^1]
+* **Time of start of follow up**: 24 hours prior to assessing CERAD[^2]
+* **Measure of effect**: odds ratio
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# 1. Define coordinates (Horizontal flow)
+coords <- list(
+  x = c(Coffee = 1, Score = 3),
+  y = c(Coffee = 1, Score = 1)
+)
+
+# 2. Build the DAG
+dag_OE <- dagify(
+  Score ~ Coffee,
+  exposure = "Coffee",
+  outcome = "Score",
+  labels = c(
+    Coffee = "Coffee Intake\n(T = -24h)",
+    Score = "CERAD Score\n(T = 0)"
+  ),
+  coords = coords
+)
+
+# 3. Process data and manually shorten the arrows
+tidy_dag <- dag_OE %>%
+  tidy_dagitty() %>%
+  mutate(status = if_else(name == "Coffee", "exposure", "outcome")) %>%
+  # Shrink the 'end' of the arrow (xend) so it doesn't enter the label box
+  mutate(
+    xend_new = x + 0.85 * (xend - x), # Stops arrow at 75% of the distance
+    yend_new = y + 0.75 * (yend - y)
+  )
+
+# 4. Plot using the new coordinates for edges
+ggplot(tidy_dag, aes(x = x, y = y, xend = xend_new, yend = yend_new)) +
+  geom_dag_edges(
+    arrow_directed = grid::arrow(
+      length = grid::unit(10, "pt"),
+      type = "closed"
+    ),
+    edge_width = 0.8
+  ) +
+  geom_dag_label(
+    aes(x = x, y = y, label = label, fill = status), # Use original x,y for labels
+    color = "white",
+    fontface = "bold",
+    size = 4.5,
+    label.padding = unit(0.5, "lines")
+  ) +
+  scale_fill_manual(
+    values = c("exposure" = "#0072B2", "outcome" = "#D55E00"),
+    name = "Variable Role"
+  ) +
+  theme_dag() +
+  expand_limits(x = c(0.5, 3.5))
+
+```
+
+[^1]: Li et al. cutoff definition "the study adopts the 25th percentile as the threshold for assessing low cognitive performance"
+[^2]: Measuring exposure is dependent on a questionnaire about dietary intakes on the day preceding the visit to the center where the CERAD tasks are performed. Another dietary questionnaire is administred some days after the visit, but we do not consider those as they occur after the outcome measurment. 
+
+# Potential confounders/mediators/colliders
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dag <- dagify(
+  # Outcome and Exposure
+  Score ~ Coffee +
+    Age +
+    Edu +
+    Gender +
+    Race +
+    Stroke +
+    Diabetes +
+    BMI +
+    Phys +
+    Smoking +
+    Alcohol,
+  Coffee ~ Age + Edu + Gender + Race + Smoking + Alcohol + Phys + Sugar + Milk,
+
+  # Mediators
+  Stroke ~ Coffee + Smoking + BMI + Alcohol,
+  Diabetes ~ Coffee + BMI + Sugar + Alcohol + Milk,
+  BMI ~ Coffee + Phys + Milk + Sugar + Alcohol + Smoking,
+
+  # colliders
+  MaritalStatus ~ Score + Coffee,
+
+  exposure = "Coffee",
+  outcome = "Score"
+)
+
+adjustment_set <- dagitty::adjustmentSets(
+  dag,
+  exposure = "Coffee",
+  outcome = "Score"
+) %>%
+  unlist() %>%
+  as.character()
+
+dag %>%
+  tidy_dagitty() %>%
+  mutate(
+    status = case_when(
+      name == "Coffee" ~ "exposure",
+      name == "Score" ~ "outcome",
+      name %in% adjustment_set ~ "confounder",
+      name == "MaritalStatus" ~ "collider",
+      TRUE ~ "mediator"
+    )
+  ) %>%
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_dag_edges() +
+  geom_dag_label(aes(fill = status), color = "white", fontface = "bold") +
+  theme_dag() +
+  scale_fill_manual(
+    values = c(
+      "exposure" = "#0072B2",
+      "outcome" = "#D55E00",
+      "confounder" = "#009E73",
+      "collider" = "#FF0000",
+      "mediator" = "grey50"
+    ),
+    name = "Node Type"
+  ) +
+  scale_x_continuous(expand = expansion(mult = 0.15)) +
+  scale_y_continuous(expand = expansion(mult = 0.15))
+```
+
+Classical confounders:
+
+* **Age**: Older individuals may change coffee habits for health reasons (e.g., sleep) and age is the strongest predictor of CERAD scores.
+
+* **Education Level**: Higher education is a "proxy" for cognitive reserve (higher CERAD) and often correlates with lifestyle choices like high coffee consumption.
+
+* **Race/Ethnicity**: Cultural patterns influence coffee preparation/intake and are often tied to social determinants of health that affect cognitive testing outcomes.
+
+* **Gender**: Men and women often have different metabolic rates for caffeine and different baseline risks for types of cognitive decline.
+
+Lifestyle confounders: 
+
+* **Smoking**: Historically, smoking and heavy coffee intake are highly correlated (the "coffee and a cigarette" effect). Smoking is neurotoxic (affects CERAD).
+
+* **Alcohol Intake**: Similar to smoking, this is a lifestyle behavior that can affect both the habit of drinking coffee and neurological health.
+
+* **Physical Activity**: People who are more active might consume more coffee for energy, and exercise is highly protective for cognition.
+
+* **Sugar and Milk** : often added to coffee and may impact cognition indirectly via the metabolic pathways 
+
+Metabolic mediators: 
+
+* **BMI**: Coffee can suppress appetite or increase metabolism (affecting BMI), and high BMI is linked to cognitive decline.
+
+* **Stroke History & Diabetes**: caffeine may affect blood pressure or insulin sensitivity, these are mediators.
+
+Social connection collider:
+
+* **Marital Status**: (hypothesis) as a proxy for social connection, drinking coffee with others maintains social connection and high cognitive function enables better social maintenance. 
+
+**NOTE ABOUT THE DATA** : coffee beverages in the dataset are not relibly separable from milk and sugar! I proxy milk by _Total Fat_ and sugar by _Total sugar_ 
+
+# Exposure dependence on covariates
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# fix reference levels for categorical vars & make factor
+data <- data %>%
+  mutate(coffee_above_threshold = if_else(coffee_above_threshold == 1, "Yes", "No")) %>%
+  mutate(coffee_above_threshold = fct_relevel(factor(coffee_above_threshold, levels = c("No", "Yes"))), "No") %>%
+
+  mutate(score_above_cutoff = if_else(score_above_cutoff == 1, "Yes", "No")) %>%
+  mutate(score_above_cutoff = fct_relevel(factor(score_above_cutoff, levels = c("No", "Yes"))), "No") %>%
+
+  mutate(alcohol_consumption = if_else(alcohol_consumption == 1, "Yes", "No")) %>%
+  mutate(alcohol_consumption = fct_relevel(factor(alcohol_consumption, levels = c("No", "Yes"))), "No") %>%
+
+  mutate(smoking_history = if_else(smoking_history == 1, "Yes", "No")) %>%
+  mutate(smoking_history = fct_relevel(factor(smoking_history, levels = c("No", "Yes"))), "No") %>%
+
+  mutate(phys_within_guidelines = if_else(phys_within_guidelines == 1, "Yes", "No")) %>%
+  mutate(phys_within_guidelines = fct_relevel(factor(phys_within_guidelines, levels = c("No", "Yes"))), "No") %>%
+
+  mutate(gender = fct_relevel(gender, "Male")) %>%
+
+  mutate(edu_cat = fct_relevel(edu_cat, "Less than High School")) %>% 
+  
+  mutate(race_cat = fct_relevel(race_cat, "Non-Hispanic White")) %>% 
+
+  mutate(phys_cat = fct_relevel(race_cat, "not active"))
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+data_table1 <- CreateTableOne(
+  data = data,
+  vars = c(
+    "score",
+    "score_above_cutoff",
+    "gender",
+    "age",
+    "edu_cat",
+    "race_cat",
+    "total_sugar",
+    "total_fat",
+    "alcohol_consumption",
+    "smoking_history",
+    "phys_cat", 
+    "phys_within_guidelines"
+  ),
+  factorVars = c(
+    "score_above_cutoff",
+    "edu_cat",
+    "race_cat",
+    "alcohol_consumption",
+    "smoking_history",
+    "phys_cat", 
+    "phys_within_guidelines"
+  ),
+  strata = "coffee_above_threshold",
+  test = T
+)
+
+tab1_matrix <- print(data_table1, showAllLevels = TRUE, printToggle = FALSE, noSpaces = TRUE)
+
+knitr::kable(
+  tab1_matrix,
+  caption = "Table 1: Baseline Characteristics by total_coffee_grams ≥ 480 g/day"
+) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  )
+```
+
+# Propensity score - Conditional probability of exposure 
+Model _P(Coffee > 480 g/day | age, gender, race, edu, sugar, fat, alcohol, smoking, phys)_ , with logistic regression for example
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+exposure_logistic_propScore <- glm(
+  coffee_above_threshold ~ age + as.factor(gender) + as.factor(race_cat) + as.factor(edu_cat) + total_sugar + total_fat + as.factor(alcohol_consumption) + as.factor(smoking_history) + as.factor(phys_within_guidelines), 
+  data = data, 
+  family = binomial
+)
+
+#summary(exposure_logistic_propScore)
+
+tidy_logistic_model(exposure_logistic_propScore)
+
+data_propScore <- data %>%
+  bind_cols(propScore = predict(exposure_logistic_propScore, type = "response"), 
+            residual = residuals(exposure_logistic_propScore, type = "response"))
+
+# plot residuals 
+#ggplot(aes(x = propScore, y = residual), data = data_propScore) +
+#  geom_point()+
+#  geom_hline(yintercept = 0) + 
+#  labs(x = "Fitted P(coffee >= 480)", y = "Residuals")
+
+arm::binnedplot(x = data_propScore$propScore,
+                y = data_propScore$residual,
+                xlab = "Pr(coffee >= 480)",
+                ylab = "Average response residuals",
+                main = "Binned residuals") 
+
+rm(data_propScore)
+```
+
+## Assessing shared support for estimated propensity scores
+We require that the distributions of propenstiy scores (or their inverse) to have largely overalpping supports, to avoid that matching based on these weights, when limited to common support, leads to selection bias. It is not the case here... but I proceed anyway... 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_ipw <- bind_cols(data, p_pred=predict(exposure_logistic_propScore, type = "response")) %>% 
+            mutate(
+              p_exposure_cond = if_else(coffee_above_threshold == "No", (1-p_pred), p_pred), # conditional probability of observed exposure
+              ipw = p_exposure_cond^(-1) ## 1/P(T|Covariates)
+              ) 
+
+# stabilize the weights by multiplying by the marginal probabilities
+exposure_logistic_intercept <- glm(coffee_above_threshold ~ 1, family = binomial, data = data)
+#summary(exposure_logistic_intercept)
+
+data_ipw_stab <- bind_cols(data_ipw, exp_pred = predict(exposure_logistic_intercept, type = "response")) %>% 
+                 mutate(
+                  ipw_stab = ifelse(coffee_above_threshold == "No", ((1-exp_pred)/(1-p_pred)), (exp_pred/p_pred))
+                  )
+
+#tapply(data_ipw_stab$ipw, data_ipw_stab$coffee_above_threshold, summary)
+
+res <- tapply(data_ipw_stab$ipw_stab, data_ipw_stab$coffee_above_threshold, summary)
+knitr::kable(do.call(rbind, res), digits = 3)
+
+#ggplot(aes(x = coffee_above_threshold, y = ipw), data = data_ipw_stab)+
+#  geom_jitter()
+
+#ggplot(aes(x = coffee_above_threshold, y = ipw_stab), data = data_ipw_stab)+
+#  geom_jitter()
+
+#ggplot(aes(x = ipw, after_stat(density), col=coffee_above_threshold), data = data_ipw_stab)+
+#  geom_histogram(binwidth = 0.5, aes(fill = coffee_above_threshold), alpha=0.5)+
+#  geom_density(linewidth=0.5)
+
+ggplot(aes(x = ipw_stab, after_stat(density), col=coffee_above_threshold), data = data_ipw_stab)+
+  geom_histogram(binwidth = 0.5, aes(fill = coffee_above_threshold), alpha=0.5)+
+  geom_density(linewidth=0.5) + 
+  labs(x = "Inverse Propensity Weights")
+
+rm(data_ipw)
+```
+
+# Modeling the outcome 
+## crude model
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+crude_logistic <- glm(score_above_cutoff ~ as.factor(coffee_above_threshold), data = data_ipw_stab, family = binomial)
+
+#summary(crude_logistic)
+tidy_logistic_model(crude_logistic)
+
+```
+
+## IPW model
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ipw_logistic <- glm(score_above_cutoff ~ as.factor(coffee_above_threshold), weights = ipw_stab, data = data_ipw_stab, family = binomial)
+
+#summary(ipw_logistic)
+tidy_logistic_model(ipw_logistic)
+```
