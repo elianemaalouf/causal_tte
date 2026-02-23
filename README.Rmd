@@ -1,0 +1,44 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Target Trial Emulation example
+
+This repository contains code of an application example of Target Trial Emulation (Causal analysis). 
+
+The target trial is partially structured based on [Li et al., 2025](https://link.springer.com/article/10.1186/s12937-025-01173-x).
+
+It uses open access data from National Health and Nutrition Examination Survey, a biennial cross-sectional study organized by the Centers for Disease Control and Prevention (CDC), and evaluates the health and nutritional status of individuals in the United States.
+
+## TT Protocol 
+* **Objective**: investigate the causal effect of coffee consumption on improved cognitive functioning in older adults (as measured by the CERAD score)
+* **Hypothesis**: higher coffee intake leads to higher CERAD scores 
+* **Population**: Included are participants aged 60 years or older. Excluded are participants with incomplete coginitive tests or incomplete dietary recall data. 
+* **Exposure**: consuming ≥ 480 g/day of coffee 
+* **Comparator**: consuming < 480 g/day of coffee 
+* **Outcome**: CERAD score > cutoff[^1]
+* **Time of start of follow up**: 24 hours prior to assessing CERAD[^2]
+* **Measure of effect**: odds ratio
+
+[^1]: Li et al. cutoff definition "the study adopts the 25th percentile as the threshold for assessing low cognitive performance"
+[^2]: Measuring exposure is dependent on a questionnaire about dietary intakes on the day preceding the visit to the center where the CERAD tasks are performed. Another dietary questionnaire is administred some days after the visit, but we do not consider those as they occur after the outcome measurment. 
+
+## Repository contents
+The repository is structures as follows: 
+
+* `data/` : folder containing all data used data files from the years 2011-2012 and 2013-2014. Dowloaded from [NHANES website](https://wwwn.cdc.gov/nchs/nhanes/default.aspx)
+* `data/dataset.rda`: the cleaned dataset used in the TTE analysis
+
+* `R/`: folder with all scripts and markdown files 
+* `R/dataPrep.R`: script to prepare `dataset.rda`
+* `R/TTE_CERAD.Rmd`: markdown file containing the analysis, rendered in html is `TTE_CERAD.html`
+
