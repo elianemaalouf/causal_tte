@@ -1803,7 +1803,7 @@ connection, drinking coffee with others maintains social connection and
 high cognitive function enables better social maintenance.</li>
 </ul>
 <p><strong>NOTE ABOUT THE DATA</strong> : coffee beverages in the
-dataset are not relibly separable from milk and sugar! I proxy milk by
+dataset are not reliably separable from milk and sugar! I proxy milk by
 <em>Total Fat</em> and sugar by <em>Total sugar</em></p>
 </div>
 <div id="exposure-dependence-on-covariates" class="section level1">
@@ -2549,7 +2549,7 @@ selection bias. It is not the case here… but I proceed anyway…</p>
 <h2>crude model</h2>
 <table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
 <caption>
-P(Coffee &gt; 480 g/day | covariates) - Odds Ratios
+P(Score &gt; cutoff | coffee) - Odds Ratios
 </caption>
 <thead>
 <tr>
@@ -2612,7 +2612,7 @@ as.factor(coffee_above_threshold)Yes
 <h2>IPW model</h2>
 <table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
 <caption>
-P(Coffee &gt; 480 g/day | covariates) - Odds Ratios
+P(Score &gt; cutoff | coffee) - (IPW) Odds Ratios
 </caption>
 <thead>
 <tr>

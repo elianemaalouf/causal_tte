@@ -23,7 +23,7 @@ library(broom)
 library(sjPlot)
 library(knitr)
 
-tidy_logistic_model <- function(logistic_model){
+tidy_logistic_model <- function(logistic_model, caption){
   tidy_model <- tidy(logistic_model, 
         exponentiate = TRUE, 
         conf.int = TRUE) %>%
@@ -36,7 +36,7 @@ tidy_logistic_model <- function(logistic_model){
   )
 
   tidy_model %>%
-    kable(escape = FALSE, digits = 3, caption = "P(Coffee > 480 g/day | covariates) - Odds Ratios") %>%
+    kable(escape = FALSE, digits = 3, caption = caption) %>%
     kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
     row_spec(0, bold = TRUE) # Bold the header row
 }
@@ -222,7 +222,7 @@ Social connection collider:
 
 * **Marital Status**: (hypothesis) as a proxy for social connection, drinking coffee with others maintains social connection and high cognitive function enables better social maintenance. 
 
-**NOTE ABOUT THE DATA** : coffee beverages in the dataset are not relibly separable from milk and sugar! I proxy milk by _Total Fat_ and sugar by _Total sugar_ 
+**NOTE ABOUT THE DATA** : coffee beverages in the dataset are not reliably separable from milk and sugar! I proxy milk by _Total Fat_ and sugar by _Total sugar_ 
 
 # Exposure dependence on covariates
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
@@ -306,7 +306,7 @@ exposure_logistic_propScore <- glm(
 
 #summary(exposure_logistic_propScore)
 
-tidy_logistic_model(exposure_logistic_propScore)
+tidy_logistic_model(exposure_logistic_propScore, caption = "P(Coffee > 480 g/day | covariates) - Odds Ratios")
 
 data_propScore <- data %>%
   bind_cols(propScore = predict(exposure_logistic_propScore, type = "response"), 
@@ -330,6 +330,7 @@ rm(data_propScore)
 ## Assessing shared support for estimated propensity scores
 We require that the distributions of propenstiy scores (or their inverse) to have largely overalpping supports, to avoid that matching based on these weights, when limited to common support, leads to selection bias. It is not the case here... but I proceed anyway... 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
+# The code here is adapted from https://zenodo.org/records/15251863/files/Causal_Analysis_Open_Data_2025-07-20.R?download=1 
 data_ipw <- bind_cols(data, p_pred=predict(exposure_logistic_propScore, type = "response")) %>% 
             mutate(
               p_exposure_cond = if_else(coffee_above_threshold == "No", (1-p_pred), p_pred), # conditional probability of observed exposure
@@ -374,7 +375,7 @@ rm(data_ipw)
 crude_logistic <- glm(score_above_cutoff ~ as.factor(coffee_above_threshold), data = data_ipw_stab, family = binomial)
 
 #summary(crude_logistic)
-tidy_logistic_model(crude_logistic)
+tidy_logistic_model(crude_logistic, caption = "P(Score > cutoff | coffee) - Odds Ratios")
 
 ```
 
@@ -383,5 +384,5 @@ tidy_logistic_model(crude_logistic)
 ipw_logistic <- glm(score_above_cutoff ~ as.factor(coffee_above_threshold), weights = ipw_stab, data = data_ipw_stab, family = binomial)
 
 #summary(ipw_logistic)
-tidy_logistic_model(ipw_logistic)
+tidy_logistic_model(ipw_logistic, caption = "P(Score > cutoff | coffee) - (IPW) Odds Ratios")
 ```

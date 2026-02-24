@@ -46,6 +46,12 @@ The repository is structures as follows:
 - `R/TTE_CERAD.Rmd`: markdown file containing the analysis, rendered in
   html is `TTE_CERAD.html`
 
+# Disclaimer
+
+The content of this repository is a practice example and does not
+constitute a scientific proof of any kind. This repository’s content is
+provided ‘as is’, without any warranty, expressed or implied.
+
 [^1]: Li et al. cutoff definition “the study adopts the 25th percentile
     as the threshold for assessing low cognitive performance”
 
